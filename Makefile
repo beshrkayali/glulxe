@@ -50,8 +50,12 @@ OPTIONS = -g -Wall -Wmissing-prototypes -Wno-unused -DOS_MAC
 
 include $(GLKINCLUDEDIR)/$(GLKMAKEFILE)
 
-CFLAGS = $(OPTIONS) -I$(GLKINCLUDEDIR) $(XMLLIBINCLUDEDIR)
-LIBS = -L$(GLKLIBDIR) $(GLKLIB) $(LINKLIBS) -lm $(XMLLIB)
+# Detect OpenSSL location
+OPENSSL_CFLAGS := $(shell pkg-config --cflags openssl 2>/dev/null)
+OPENSSL_LIBDIR := $(shell pkg-config --libs-only-L openssl 2>/dev/null)
+
+CFLAGS = $(OPTIONS) -I$(GLKINCLUDEDIR) $(XMLLIBINCLUDEDIR) $(OPENSSL_CFLAGS)
+LIBS = -L$(GLKLIBDIR) $(GLKLIB) $(LINKLIBS) $(OPENSSL_LIBDIR) -lm $(XMLLIB)
 
 OBJS = main.o files.o vm.o exec.o funcs.o operand.o string.o glkop.o \
   heap.o serial.o search.o accel.o float.o gestalt.o osdepend.o \
