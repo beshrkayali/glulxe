@@ -74,6 +74,14 @@ $(OBJS) unixstrt.o unixautosave.o: glulxe.h unixstrt.h
 exec.o operand.o: opcodes.h
 gestalt.o: gestalt.h
 
+wasm:
+	$(MAKE) -f Makefile.wasm wasm
+
+clean-wasm:
+	$(MAKE) -f Makefile.wasm clean
+
 clean:
 	rm -f *~ *.o glulxe glulxdump profile-raw
+
+.PHONY: wasm clean-wasm
 

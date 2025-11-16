@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>webGlulxe - Interactive Fiction Player with LLM support</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        header {
+            background: #2a2a2a;
+            padding: 1rem;
+            border-bottom: 2px solid #3a3a3a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            color: #4a9eff;
+        }
+
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        button {
+            background: #3a3a3a;
+            color: #e0e0e0;
+            border: 1px solid #4a4a4a;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #4a4a4a;
+            border-color: #5a5a5a;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #2a2a2a;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        #output {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            background: #0a0a0a;
+            white-space: pre-wrap;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .input-container {
+            background: #2a2a2a;
+            padding: 1rem;
+            border-top: 2px solid #3a3a3a;
+        }
+
+        #input {
+            width: 100%;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            border: 1px solid #3a3a3a;
+            padding: 0.75rem;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        #input:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+
+        .llm-indicator {
+            display: inline-block;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.8rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }
+
+        .llm-indicator.enabled {
+            background: #2a4a2a;
+            color: #4eff4a;
+        }
+
+        .llm-indicator.disabled {
+            background: #4a2a2a;
+            color: #ff4a4a;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+        }
+
+        .modal-content {
+            background: #2a2a2a;
+            margin: 5% auto;
+            padding: 2rem;
+            border: 1px solid #4a4a4a;
+            width: 90%;
+            max-width: 600px;
+            border-radius: 5px;
+        }
+
+        .modal h2 {
+            color: #4a9eff;
+            margin-bottom: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #b0b0b0;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            border: 1px solid #3a3a3a;
+            padding: 0.5rem;
+            font-family: inherit;
+        }
+
+        .form-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 0.5rem;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #fff;
+        }
+
+        .interpretation {
+            color: #4a9eff;
+            font-style: italic;
+        }
+
+        .status {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.8rem;
+            background: #3a3a3a;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>webGlulxe: Interactive Fiction Player with LLM support</h1>
+        <div class="controls">
+            <div class="file-input-wrapper">
+                <button>Load Game File</button>
+                <input type="file" id="fileInput" accept=".ulx,.gblorb,.blorb">
+            </div>
+            <button id="llmConfig">LLM Settings</button>
+            <span class="llm-indicator disabled" id="llmIndicator">LLM: OFF</span>
+            <span class="status" id="status">No game loaded</span>
+        </div>
+    </header>
+
+    <div id="output"></div>
+
+    <div class="input-container">
+        <input type="text" id="input" placeholder="Enter command..." disabled>
+    </div>
+
+    <div id="llmModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>LLM Configuration</h2>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="llmEnabled">
+                    Enable LLM-powered natural language processing
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="provider">Provider:</label>
+                <select id="provider">
+                    <option value="openai">OpenAI</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="ollama">Ollama (Local)</option>
+                    <option value="custom">Custom Endpoint</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="customEndpointGroup" style="display: none;">
+                <label for="apiEndpoint">Custom API Endpoint:</label>
+                <input type="text" id="apiEndpoint" placeholder="https://api.example.com/v1/chat/completions">
+            </div>
+
+            <div class="form-group">
+                <label for="apiKey">API Key:</label>
+                <input type="password" id="apiKey" placeholder="sk-...">
+            </div>
+
+            <div class="form-group">
+                <label for="model">Model:</label>
+                <input type="text" id="model" placeholder="gpt-4" value="gpt-4">
+            </div>
+
+            <div class="form-group">
+                <label for="contextLines">Context Lines (0-20):</label>
+                <input type="number" id="contextLines" min="0" max="20" value="10">
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="echoInterpretation" checked>
+                    Show LLM interpretation in output
+                </label>
+            </div>
+
+            <div class="form-group" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #3a3a3a;">
+                <p style="font-size: 0.85rem; color: #888; line-height: 1.4;">
+                    <strong>Security Note:</strong> API keys are encrypted and stored in your browser's local storage.
+                    They never leave your device except when making API calls to your configured endpoint.
+                    Only use this on trusted devices.
+                </p>
+            </div>
+
+            <div class="form-actions">
+                <button id="saveLLMConfig">Save Configuration</button>
+                <button id="cancelLLMConfig">Cancel</button>
+                <button id="clearLLMConfig" style="background: #4a2a2a; margin-left: auto;">Clear Saved Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var Module;
+        let currentInput = '';
+        let inputBuffer = [];
+        let outputBuffer = '';
+        let errorBuffer = '';
+        let gameOutputHistory = [];
+        let waitingForInput = false;
+        let gameLoaded = false;
+        let llmConfig = {
+            enabled: false,
+            provider: 'openai',
+            apiEndpoint: 'https://api.openai.com/v1/chat/completions',
+            apiKey: '',
+            model: 'gpt-4',
+            contextLines: 10,
+            echoInterpretation: true
+        };
+
+        async function getEncryptionKey() {
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(window.location.origin + navigator.userAgent.substring(0, 50)),
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+
+            return await crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: new TextEncoder().encode('glulxe-llm-v1'),
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encryptData(text) {
+            if (!text) return '';
+            try {
+                const key = await getEncryptionKey();
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const encrypted = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv },
+                    key,
+                    new TextEncoder().encode(text)
+                );
+
+                const combined = new Uint8Array(iv.length + encrypted.byteLength);
+                combined.set(iv);
+                combined.set(new Uint8Array(encrypted), iv.length);
+
+                return btoa(String.fromCharCode(...combined));
+            } catch (e) {
+                console.error('Encryption failed:', e);
+                return text;
+            }
+        }
+
+        async function decryptData(encryptedText) {
+            if (!encryptedText) return '';
+
+            if (encryptedText.length < 16 || !/^[A-Za-z0-9+/=]+$/.test(encryptedText)) {
+                return encryptedText;
+            }
+
+            try {
+                const key = await getEncryptionKey();
+                const combined = Uint8Array.from(atob(encryptedText), c => c.charCodeAt(0));
+
+                const iv = combined.slice(0, 12);
+                const data = combined.slice(12);
+
+                const decrypted = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv },
+                    key,
+                    data
+                );
+
+                return new TextDecoder().decode(decrypted);
+            } catch (e) {
+                console.warn('Decryption failed, treating as plaintext:', e.message);
+                return encryptedText;
+            }
+        }
+
+        async function loadLLMConfig() {
+            const saved = localStorage.getItem('glulxe_llm_config');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+
+                    if (parsed.apiKey) {
+                        parsed.apiKey = await decryptData(parsed.apiKey);
+                    }
+
+                    llmConfig = { ...llmConfig, ...parsed };
+                    updateLLMUI();
+                } catch (e) {
+                    console.error('Failed to load LLM config:', e);
+                }
+            }
+        }
+
+        async function saveLLMConfig() {
+            try {
+                const configToSave = { ...llmConfig };
+
+                if (configToSave.apiKey) {
+                    configToSave.apiKey = await encryptData(configToSave.apiKey);
+                }
+
+                localStorage.setItem('glulxe_llm_config', JSON.stringify(configToSave));
+                updateLLMUI();
+            } catch (e) {
+                console.error('Failed to save LLM config:', e);
+            }
+        }
+
+        function clearLLMConfig() {
+            if (confirm('This will delete your saved LLM settings including API keys. Continue?')) {
+                localStorage.removeItem('glulxe_llm_config');
+                llmConfig = {
+                    enabled: false,
+                    apiEndpoint: 'https://api.openai.com/v1/chat/completions',
+                    apiKey: '',
+                    model: 'gpt-4',
+                    contextLines: 10,
+                    echoInterpretation: true
+                };
+                updateLLMUI();
+                alert('LLM settings cleared');
+            }
+        }
+
+        function updateLLMUI() {
+            const indicator = document.getElementById('llmIndicator');
+            if (llmConfig.enabled && llmConfig.apiKey) {
+                indicator.className = 'llm-indicator enabled';
+                indicator.textContent = 'LLM: ON';
+            } else {
+                indicator.className = 'llm-indicator disabled';
+                indicator.textContent = 'LLM: OFF';
+            }
+
+            if (Module && Module._gli_llm_config) {
+                Module.HEAPU8[Module._gli_llm_config] = llmConfig.enabled ? 1 : 0;
+            }
+        }
+
+        async function processLLMInput(input, contextJson, sceneInfo) {
+            if (!llmConfig.enabled || !llmConfig.apiKey) {
+                return input;
+            }
+
+            try {
+                const recentContext = gameOutputHistory.slice(-Math.min(llmConfig.contextLines, gameOutputHistory.length)).join('\n');
+
+                const systemPrompt = `You are an intelligent text adventure command interpreter for Glulx games. Most Glulx games are built with Inform (I6/I7) and use Inform-standard grammar, but not all. Default to Inform-normalized commands and abbreviations unless the context clearly shows a custom command set.
+
+CRITICAL RULES:
+1. Output ONLY the command(s) - NO quotes, explanations, or extra text
+2. Use scene descriptions to resolve spatial references
+3. Prefer the shortest valid Inform form
+4. You MAY output a short sequence of commands when multiple steps are clearly required; separate commands with '. ' (a period followed by a space). Keep sequences minimal
+5. NEVER interpret 'go to X' as 'look' - either find the direction or return empty
+6. Use standard Inform abbreviations where unambiguous: n, s, e, w, ne, nw, se, sw, u, d, in, out, l, x thing, i, z, g
+7. Punctuation: only use commas in multi-object lists and '. ' to separate multiple commands. No other punctuation, and keep it to one line
+8. If the game appears to use non-Inform verbs (from context), adapt to those instead of forcing Inform terms
+
+LOCATION AWARENESS:
+- Check the CURRENT LOCATION field
+- If player says 'go to X' and X matches the current location, return EMPTY STRING
+- Example: Current='Back Alley', Input='go to the alley' → (empty, don't output 'look')
+
+SPATIAL REASONING:
+- Read the scene description carefully
+- Use standard direction abbreviations when moving: n, s, e, w, ne, nw, se, sw, u, d, in, out
+- 'go to X' should use the direction mentioned: if 'bedroom is north' then 'go to bedroom' → n
+- 'enter X' becomes the direction if X is mentioned with a direction (e.g., 'door south leads outside' + 'go outside' → s)
+- Look for phrases like 'X is to the Y' or 'door to Y leads to X'
+- If no direction is clear for 'go to X', return EMPTY STRING (don't guess)
+
+MULTI-OBJECT HANDLING (Inform-aware):
+- Inform commonly supports multiple objects for some verbs. When clearly intended and supported, use a single command with a list:
+  - Typically multi: take, drop, take all, drop all, take all from <container>, drop all except <object>
+  - Typically single: wear, take off, open, close, lock, unlock, examine, read, eat, drink, attack, talk, put/insert
+- Join multiple objects with commas or 'and' for supported verbs: e.g., 'take coin, gem, ring' or 'drop coin and gem'
+- If the verb likely does not support multiple objects, pick ONE logical/most salient item and output a single-object command
+- Do not invent implicit actions; only chain multiple commands with '. ' when the steps are clearly implied or explicitly requested
+
+SEQUENCING (Multiple commands on one line):
+- When a request implies necessary steps, output a short chain using '. ' as the separator: e.g., 'unlock door with key. open door. n'
+- Resolve pronouns within the chain by repeating the noun: 'take key. unlock door with key' (avoid 'it')
+- Keep the chain minimal and relevant
+
+NORMALIZED INFORM COMMANDS:
+- Movement: 'go north'/'north' → n; 'up' → u; 'down' → d; 'inside'/'enter (no target)' → in; 'outside'/'exit' → out
+- Look: 'look around'/'whats here' → l
+- Inventory: 'what do I have'/'check inventory' → i
+- Examine/Inspect: 'inspect X'/'check X'/'look at X' → x X
+- Take: 'pick up X'/'grab X'/'get X' → take X; multi: 'take X and Y' → take X and Y; 'take all' and 'take all from bag' are valid
+- Drop: 'drop X and Y' → drop X and Y; 'drop all' and 'drop all except sword' are valid
+- Containers/Supporters: 'take X from Y' → take X from Y; 'put/insert X in/into Y' → put X in Y (usually single object)
+- Clothing: 'put on X'/'wear X' → wear X; 'take off X'/'remove X (clothing)' → take off X
+- Doors/Locks: 'use key on door' → unlock door with key (or open/lock based on context)
+- Conversation: 'talk to Y' → talk to Y; 'ask Y about Z' → ask Y about Z; 'tell Y about Z' → tell Y about Z; 'ask Y for X' → ask Y for X
+- Time/Repeat: 'wait' → z; 'again'/'repeat that' → g
+
+CONTEXT:
+${recentContext}
+
+EXAMPLES:
+Current='Living Room', Scene='bedroom is north' + Input='go to bedroom' → n
+Current='Back Alley', Scene='...' + Input='go to the alley' → (empty)
+Current='Street', Scene='alley runs north' + Input='go to alley' → n
+Scene='door south leads outside' + Input='go outside' → s
+Scene='has coat, boots, scarf' + Input='wear winter clothes' → wear coat
+Input='put on coat and boots' → wear coat
+Input='read the letter' → read letter
+Input='whats around' → l
+Input='what do i have' → i
+Input='take sword and shield' → take sword and shield
+Input='take coin, gem, and ring' → take coin, gem, ring
+Input='take all from bag' → take all from bag
+Input='drop everything except sword' → drop all except sword
+Input='open the red door and go north' → open red door. n
+Input='unlock the iron door with the brass key, then enter' → unlock iron door with brass key. in
+Input='take the key and unlock the blue door with it' → take key. unlock blue door with key
+Input='go somewhere unclear' → (empty, don't guess)`;
+
+                console.log('[LLM] Context used:', recentContext);
+
+                const response = await fetch(llmConfig.apiEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${llmConfig.apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: llmConfig.model,
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            { role: 'user', content: input }
+                        ],
+                        max_tokens: 50,
+                        temperature: 0.3
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const interpreted = data.choices[0]?.message?.content?.trim() || input;
+
+                console.log('[LLM] Input:', input, '→ Output:', interpreted);
+
+                if (llmConfig.echoInterpretation && interpreted !== input) {
+                    appendOutput(`<span class="interpretation">[LLM: "${input}" → "${interpreted}"]</span>\n`);
+                }
+
+                return interpreted;
+            } catch (error) {
+                console.error('LLM processing error:', error);
+                appendOutput(`<span style="color: #ff4a4a;">[LLM Error: ${error.message}]</span>\n`);
+                return input;
+            }
+        }
+
+        function initGlulxe() {
+            const outputElement = document.getElementById('output');
+            const inputElement = document.getElementById('input');
+            const statusElement = document.getElementById('status');
+            const fileInputBtn = document.querySelector('.file-input-wrapper button');
+
+            fileInputBtn.disabled = true;
+            statusElement.textContent = 'Loading WASM module...';
+
+            fetch('glulxe.js', { method: 'HEAD' })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('glulxe.js not found');
+                    }
+
+                    const script = document.createElement('script');
+                    script.src = 'glulxe.js';
+                    script.async = true;
+                    script.onerror = function(e) {
+                        console.error('Failed to load glulxe.js:', e);
+                        statusElement.innerHTML = 'Failed to load glulxe.js<br><small>Check browser console</small>';
+                        statusElement.style.background = '#4a2a2a';
+                        statusElement.style.color = '#ff4a4a';
+                        fileInputBtn.disabled = false;
+                    };
+                    script.onload = async function() {
+                        console.log('glulxe.js script loaded');
+
+                        if (typeof Module === 'function') {
+                            Module = await Module({
+                                print: function(text) {
+                                    if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+                                    if (gameLoaded) {
+                                        if (!text.includes('Glk library error:')) {
+                                            appendOutput(text + '\n');
+                                        }
+                                    }
+                                },
+                                printErr: function(text) {
+                                    if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+                                    console.error(text);
+                                    if (gameLoaded) {
+                                        appendOutput('<span style="color: #ff4a4a;">' + text + '</span>\n');
+                                    }
+                                },
+
+                                stdout: function(charCode) {
+                                    if (!gameLoaded) return;
+
+                                    const char = String.fromCharCode(charCode);
+                                    outputBuffer += char;
+
+                                    const shouldFlush = char === '\n' || 
+                                                       outputBuffer.length > 100 ||
+                                                       (outputBuffer.match(/[?:>]\s*$/) && outputBuffer.length > 10);
+
+                                    if (shouldFlush) {
+                                        let output = outputBuffer;
+
+                                        if (output.startsWith('>') && output.length > 1 && output[1] !== ' ') {
+                                            output = output.substring(1);
+                                        }
+
+                                        appendOutput(output);
+                                        outputBuffer = '';
+                                    }
+                                },
+
+                                flushStdout: function() {
+                                    if (outputBuffer.length > 0) {
+                                        let output = outputBuffer;
+
+                                        if (output.startsWith('>') && output.length > 1 && output[1] !== ' ') {
+                                            output = output.substring(1);
+                                        }
+
+                                        appendOutput(output);
+                                        outputBuffer = '';
+                                    }
+                                },
+                                stderr: function(charCode) {
+                                    if (!gameLoaded) return;
+
+                                    const char = String.fromCharCode(charCode);
+                                    errorBuffer += char;
+
+                                    if (char === '\n') {
+                                        appendOutput('<span style="color: #ff4a4a;">' + errorBuffer + '</span>');
+                                        errorBuffer = '';
+                                    }
+                                },
+                                setStatus: function(text) {
+                                },
+                                onRuntimeInitialized: function() {
+                                    statusElement.textContent = 'Ready - Load a game to begin';
+                                    statusElement.style.background = '#2a4a2a';
+                                    statusElement.style.color = '#4eff4a';
+                                    fileInputBtn.disabled = false;
+                                },
+                                processLLMInput: async function(input, contextJson, sceneInfo) {
+                                    return await processLLMInput(input, contextJson, sceneInfo);
+                                },
+                                wasmInputLine: null,
+                                locateFile: function(path, prefix) {
+                                    return path;
+                                },
+                                monitorRunDependencies: function(left) {
+                                    console.log('Dependencies remaining:', left);
+                                },
+                                noInitialRun: true,
+                                noExitRuntime: true
+                            });
+                            console.log('Module initialized:', Module);
+                        }
+                    };
+                    document.body.appendChild(script);
+                })
+                .catch(error => {
+                    console.error('WASM files not found:', error);
+                    statusElement.innerHTML = 'WASM files not built yet<br><small>Run: ./build-wasm.sh</small>';
+                    statusElement.style.background = '#4a2a2a';
+                    statusElement.style.color = '#ff4a4a';
+                    fileInputBtn.disabled = false;
+                });
+        }
+
+        function appendOutput(text) {
+            const outputElement = document.getElementById('output');
+            outputElement.innerHTML += text;
+            outputElement.scrollTop = outputElement.scrollHeight;
+
+            if (text && text.trim() && !text.includes('interpretation')) {
+                gameOutputHistory.push(text.replace(/<[^>]*>/g, '').trim());
+                if (gameOutputHistory.length > 20) {
+                    gameOutputHistory.shift();
+                }
+            }
+        }
+
+        document.querySelector('.file-input-wrapper button').addEventListener('click', function() {
+            document.getElementById('fileInput').click();
+        });
+
+        document.getElementById('fileInput').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = 'Loading game...';
+
+            try {
+                if (!Module || !Module.FS) {
+                    statusElement.textContent = 'WASM module not ready yet';
+                    statusElement.style.background = '#4a2a2a';
+                    statusElement.style.color = '#ff4a4a';
+                    return;
+                }
+
+                const arrayBuffer = await file.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+
+                const filename = file.name.toLowerCase().endsWith('.gblorb') || file.name.toLowerCase().endsWith('.blorb') 
+                    ? 'game.gblorb' 
+                    : 'game.ulx';
+
+                Module.FS.writeFile('/' + filename, uint8Array);
+
+                document.getElementById('output').innerHTML = '';
+                gameOutputHistory = [];
+
+                gameLoaded = true;
+
+                Module.callMain(['/' + filename]);
+
+                document.querySelector('.file-input-wrapper button').disabled = true;
+                document.getElementById('status').innerHTML = 'Game running<br><small>Refresh to load another game</small>';
+
+                document.getElementById('input').disabled = false;
+                statusElement.style.background = '#2a4a2a';
+                statusElement.style.color = '#4eff4a';
+            } catch (error) {
+                console.error('Error loading game:', error);
+                statusElement.textContent = 'Error: ' + error.message;
+                statusElement.style.background = '#4a2a2a';
+                statusElement.style.color = '#ff4a4a';
+            }
+        });
+
+        document.getElementById('input').addEventListener('keypress', async function(e) {
+            if (e.key === 'Enter' && gameLoaded && Module) {
+                const input = this.value.trim();
+                if (!input) return;
+
+                this.value = '';
+                appendOutput(`> ${input}\n`);
+
+                let processedInput = input;
+                if (llmConfig.enabled && llmConfig.apiKey) {
+                    const contextJson = '';
+                    const sceneInfo = '';
+                    processedInput = await processLLMInput(input, contextJson, sceneInfo);
+                }
+
+                Module.wasmInputLine = processedInput + '\n';
+                console.log('[Input] Set wasmInputLine:', Module.wasmInputLine);
+            }
+        });
+
+        const modal = document.getElementById('llmModal');
+        const llmConfigBtn = document.getElementById('llmConfig');
+        const closeBtn = document.querySelector('.close');
+        const saveLLMBtn = document.getElementById('saveLLMConfig');
+        const cancelLLMBtn = document.getElementById('cancelLLMConfig');
+
+        const providerSelect = document.getElementById('provider');
+        const customEndpointGroup = document.getElementById('customEndpointGroup');
+
+        providerSelect.addEventListener('change', function() {
+            const provider = this.value;
+            if (provider === 'custom') {
+                customEndpointGroup.style.display = 'block';
+            } else {
+                customEndpointGroup.style.display = 'none';
+                const endpoints = {
+                    'openai': 'https://api.openai.com/v1/chat/completions',
+                    'openrouter': 'https://openrouter.ai/api/v1/chat/completions',
+                    'ollama': 'http://localhost:11434/v1/chat/completions'
+                };
+                document.getElementById('apiEndpoint').value = endpoints[provider];
+            }
+        });
+
+        llmConfigBtn.onclick = function() {
+            document.getElementById('llmEnabled').checked = llmConfig.enabled;
+            document.getElementById('provider').value = llmConfig.provider || 'openai';
+            document.getElementById('apiEndpoint').value = llmConfig.apiEndpoint;
+            document.getElementById('apiKey').value = llmConfig.apiKey;
+            document.getElementById('model').value = llmConfig.model;
+            document.getElementById('contextLines').value = llmConfig.contextLines;
+            document.getElementById('echoInterpretation').checked = llmConfig.echoInterpretation;
+
+            if (llmConfig.provider === 'custom') {
+                customEndpointGroup.style.display = 'block';
+            } else {
+                customEndpointGroup.style.display = 'none';
+            }
+
+            modal.style.display = 'block';
+        };
+
+        closeBtn.onclick = function() {
+            modal.style.display = 'none';
+        };
+
+        cancelLLMBtn.onclick = function() {
+            modal.style.display = 'none';
+        };
+
+        saveLLMBtn.onclick = async function() {
+            llmConfig.enabled = document.getElementById('llmEnabled').checked;
+            llmConfig.provider = document.getElementById('provider').value;
+            llmConfig.apiEndpoint = document.getElementById('apiEndpoint').value;
+            llmConfig.apiKey = document.getElementById('apiKey').value;
+            llmConfig.model = document.getElementById('model').value;
+            llmConfig.contextLines = parseInt(document.getElementById('contextLines').value);
+            llmConfig.echoInterpretation = document.getElementById('echoInterpretation').checked;
+
+            await saveLLMConfig();
+            modal.style.display = 'none';
+        };
+
+        const clearLLMBtn = document.getElementById('clearLLMConfig');
+        clearLLMBtn.onclick = function() {
+            clearLLMConfig();
+        };
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        };
+
+        (async function() {
+            await loadLLMConfig();
+            initGlulxe();
+        })();
+    </script>
+</body>
+</html>

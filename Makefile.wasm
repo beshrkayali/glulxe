@@ -1,0 +1,42 @@
+# WebAssembly Makefile for Glulxe
+# This builds glulxe as a WASM module with cheapglk
+
+GLKINCLUDEDIR = ../cheapglk
+GLKLIBDIR = ../cheapglk
+
+EMCC = emcc
+WASM_CFLAGS = -O2 -DWASM_BUILD -DOS_UNIX
+
+WASM_LDFLAGS = -s WASM=1 -s MODULARIZE=1 -s EXPORT_NAME='Module' \
+	-s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","FS","callMain","UTF8ToString","stringToUTF8","Asyncify"]' \
+	-s ALLOW_MEMORY_GROWTH=1 -s FORCE_FILESYSTEM=1 \
+	-s EXPORTED_FUNCTIONS='["_main","_malloc","_free"]' \
+	-s EXIT_RUNTIME=0 \
+	-s INVOKE_RUN=0 \
+	-s ENVIRONMENT=web \
+	-s NO_EXIT_RUNTIME=1 \
+	-s ASYNCIFY=1 \
+	-s ASYNCIFY_STACK_SIZE=24576
+
+WASM_INCLUDES = -I$(GLKINCLUDEDIR)
+
+OBJS = main.o files.o vm.o exec.o funcs.o operand.o string.o glkop.o \
+  heap.o serial.o search.o accel.o float.o gestalt.o osdepend.o \
+  profile.o debugger.o unixstrt.o unixautosave.o
+
+WASM_OBJS = $(OBJS:.o=.wasm.o)
+
+%.wasm.o: %.c
+	$(EMCC) $(WASM_CFLAGS) $(WASM_INCLUDES) -c $< -o $@
+
+glulxe.js: $(WASM_OBJS)
+	$(EMCC) $(WASM_LDFLAGS) -o glulxe.js $(WASM_OBJS) \
+		-L$(GLKLIBDIR) $(GLKLIBDIR)/libcheapglk.wasm.a -lm
+
+wasm: glulxe.js
+	@echo "Glulxe WASM build complete. Files: glulxe.js, glulxe.wasm"
+
+clean:
+	rm -f *.wasm.o glulxe.js glulxe.wasm
+
+.PHONY: wasm clean

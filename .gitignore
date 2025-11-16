@@ -1,2 +1,5 @@
 *.o
 glulxe
+*.wasm.o
+glulxe.js
+glulxe.wasm

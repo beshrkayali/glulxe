@@ -23,11 +23,9 @@ The Glulxe VM code itself is completely unchanged.
 
 - C compiler
 - OpenSSL (for the LLM-enabled Glk library)
-- [CheapGlk fork](https://github.com/beshrkayali/cheapglk) with LLM-based user-input parsing
+- [CheapGlk fork](https://github.com/beshrkayali/cheapglk) with LLM support
 
-### Setup
-
-First, clone the cheapglk repository in a parallel directory to this fork:
+### Native Build (CLI)
 
 ```bash
 cd ..
@@ -35,18 +33,52 @@ git clone https://github.com/beshrkayali/cheapglk.git
 cd cheapglk
 make
 cd ../glulxe
-```
-
-### macOS
-```bash
-brew install openssl
 make glulxe
 ```
 
-### Linux (Ubuntu/Debian)
+Install OpenSSL if needed:
+- macOS: `brew install openssl`
+- Linux: `sudo apt-get install libssl-dev`
+
+### WebAssembly Build (Browser)
+
+Requires [Emscripten SDK](https://emscripten.org/):
+
 ```bash
-sudo apt-get install libssl-dev
-make glulxe
+# Install Emscripten in parallel directory
+cd ..
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+./emsdk install latest
+./emsdk activate latest
+source ./emsdk_env.sh
+
+# Build CheapGlk for WASM
+cd ../cheapglk
+make wasm
+
+# Build Glulxe for WASM
+cd ../glulxe
+make wasm
+```
+
+The WebAssembly build creates:
+- `glulxe.js` - JavaScript loader
+- `glulxe.wasm` - WebAssembly binary
+
+An example html web page that makes use of the built js loader and wasm bin is provided in  `glulxe-web.html`, a browser interface with LLM configuration UI, where you can also load a game directly from the browser:
+
+```bash
+# Serve and open in browser
+python3 -m http.server 8080
+# Open: http://localhost:8080/glulxe-web.html
+```
+
+### Cleaning Builds
+
+```bash
+make clean        # Clean native build
+make clean-wasm   # Clean WASM build
 ```
 
 ## Using the LLM Features
