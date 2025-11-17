@@ -824,13 +824,20 @@ Input='go somewhere unclear' → (empty, don't guess)`;
                 if (!input) return;
 
                 this.value = '';
-                appendOutput(`> ${input}\n`);
-
+                
                 let processedInput = input;
                 if (llmConfig.enabled && llmConfig.apiKey) {
+                    const loadingId = 'llm-loading-' + Date.now();
+                    appendOutput(` ${input} <span id="${loadingId}" style="color: #888;">processing...</span>\n`);
+
                     const contextJson = '';
                     const sceneInfo = '';
                     processedInput = await processLLMInput(input, contextJson, sceneInfo);
+
+                    const loadingEl = document.getElementById(loadingId);
+                    if (loadingEl) loadingEl.remove();
+                } else {
+                    appendOutput(`> ${input}\n`);
                 }
 
                 Module.wasmInputLine = processedInput + '\n';
