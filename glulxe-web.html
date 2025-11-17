@@ -215,6 +215,7 @@
                 <input type="file" id="fileInput" accept=".ulx,.gblorb,.blorb">
             </div>
             <button id="llmConfig">LLM Settings</button>
+            <button id="aboutBtn">About</button>
             <span class="llm-indicator disabled" id="llmIndicator">LLM: OFF</span>
             <span class="status" id="status">No game loaded</span>
         </div>
@@ -226,9 +227,59 @@
         <input type="text" id="input" placeholder="Enter command..." disabled>
     </div>
 
+    <div id="aboutModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="closeAbout">&times;</span>
+            <h2>About webGlulxe</h2>
+
+            <p style="line-height: 1.6; margin-bottom: 1rem;">
+                This is <strong>Glulxe</strong>, the reference interpreter for Glulx, a portable VM for interactive fiction.
+            </p>
+
+            <p style="line-height: 1.6; margin-bottom: 1rem;">
+                This experimental build includes LLM-powered natural language input processing. 
+                When enabled, players can use conversational input while games continue to work without modifications.
+            </p>
+
+            <p style="line-height: 1.6; margin-bottom: 1rem;">
+                The LLM integration is implemented through a modified CheapGlk library, leaving the Glulxe VM itself unchanged.
+                Games can be played traditionally or with natural language interpretation enabled.
+            </p>
+
+            <p style="line-height: 1.6; margin-bottom: 1rem;">
+                <strong>This is an experiment</strong> to explore how LLMs can enhance interactive fiction 
+                through better natural language understanding while preserving the puzzle-solving nature of IF.
+            </p>
+
+            <p style="line-height: 1.6; margin-bottom: 1rem; font-size: 0.9rem; color: #b0b0b0;">
+                Note: I added a WebAssembly build of Glulxe to make testing easier. 
+                This web interface uses that WASM build to run games directly in the browser. Here we don't use CheapGLK
+                to communicate with external hosted model API provided but delegate that to the browser with regular JS.
+            </p>
+
+            <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #3a3a3a;">
+                <p style="font-size: 0.9rem; color: #888;">
+                    <strong>Credits:</strong><br>
+                    Glulx VM and CheapGLK: Andrew Plotkin<br>
+                    LLM Experiment and WASM build: Beshr Kayali Reinholdsson
+                </p>
+                <p style="font-size: 0.9rem; color: #888; margin-top: 0.5rem;">
+                    <strong>Links:</strong><br>
+                    <a href="https://github.com/beshrkayali/glulxe" target="_blank" style="color: #4a9eff;">GitHub Repository</a> |
+                    <a href="https://github.com/beshrkayali/cheapglk" target="_blank" style="color: #4a9eff;">Modified CheapGlk</a> |
+                    <a href="https://www.eblong.com/zarf/glulx/" target="_blank" style="color: #4a9eff;">Glulx Specification</a>
+                </p>
+            </div>
+
+            <div class="form-actions">
+                <button id="closeAboutBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div id="llmModal" class="modal">
         <div class="modal-content">
-            <span class="close">&times;</span>
+            <span class="close" id="closeLlm">&times;</span>
             <h2>LLM Configuration</h2>
 
             <div class="form-group">
@@ -258,9 +309,16 @@
                 <input type="password" id="apiKey" placeholder="sk-...">
             </div>
 
-            <div class="form-group">
+            <div class="form-group" id="modelInputGroup">
                 <label for="model">Model:</label>
                 <input type="text" id="model" placeholder="gpt-4" value="gpt-4">
+            </div>
+
+            <div class="form-group" id="modelSelectGroup" style="display: none;">
+                <label for="modelSelect">Model:</label>
+                <select id="modelSelect">
+                    <option value="">Loading models...</option>
+                </select>
             </div>
 
             <div class="form-group">
@@ -529,12 +587,17 @@ Input='go somewhere unclear' → (empty, don't guess)`;
 
                 console.log('[LLM] Context used:', recentContext);
 
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                if (llmConfig.apiKey) {
+                    headers['Authorization'] = `Bearer ${llmConfig.apiKey}`;
+                }
+
                 const response = await fetch(llmConfig.apiEndpoint, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${llmConfig.apiKey}`
-                    },
+                    headers: headers,
+                    mode: llmConfig.provider === 'ollama' ? 'cors' : 'cors',
                     body: JSON.stringify({
                         model: llmConfig.model,
                         messages: [
@@ -775,17 +838,53 @@ Input='go somewhere unclear' → (empty, don't guess)`;
             }
         });
 
+        const aboutModal = document.getElementById('aboutModal');
+        const aboutBtn = document.getElementById('aboutBtn');
+        const closeAboutBtn = document.getElementById('closeAbout');
+        const closeAboutBtnBottom = document.getElementById('closeAboutBtn');
+
+        aboutBtn.onclick = function() {
+            aboutModal.style.display = 'block';
+        };
+
+        closeAboutBtn.onclick = function() {
+            aboutModal.style.display = 'none';
+        };
+
+        closeAboutBtnBottom.onclick = function() {
+            aboutModal.style.display = 'none';
+        };
+
         const modal = document.getElementById('llmModal');
         const llmConfigBtn = document.getElementById('llmConfig');
-        const closeBtn = document.querySelector('.close');
+        const closeBtn = document.getElementById('closeLlm');
         const saveLLMBtn = document.getElementById('saveLLMConfig');
         const cancelLLMBtn = document.getElementById('cancelLLMConfig');
 
         const providerSelect = document.getElementById('provider');
         const customEndpointGroup = document.getElementById('customEndpointGroup');
 
-        providerSelect.addEventListener('change', function() {
-            const provider = this.value;
+        async function fetchOllamaModels() {
+            try {
+                const response = await fetch('http://localhost:11434/api/tags', {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                if (!response.ok) throw new Error('Failed to fetch models');
+                const data = await response.json();
+                return data.models || [];
+            } catch (error) {
+                console.error('Error fetching Ollama models:', error);
+                return [];
+            }
+        }
+
+        async function updateProviderUI() {
+            const provider = providerSelect.value;
+            const modelInputGroup = document.getElementById('modelInputGroup');
+            const modelSelectGroup = document.getElementById('modelSelectGroup');
+            const modelSelect = document.getElementById('modelSelect');
+
             if (provider === 'custom') {
                 customEndpointGroup.style.display = 'block';
             } else {
@@ -797,22 +896,41 @@ Input='go somewhere unclear' → (empty, don't guess)`;
                 };
                 document.getElementById('apiEndpoint').value = endpoints[provider];
             }
-        });
 
-        llmConfigBtn.onclick = function() {
+            if (provider === 'ollama') {
+                modelInputGroup.style.display = 'none';
+                modelSelectGroup.style.display = 'block';
+                modelSelect.innerHTML = '<option value="">Loading models...</option>';
+
+                const models = await fetchOllamaModels();
+                if (models.length > 0) {
+                    modelSelect.innerHTML = models.map(m => 
+                        `<option value="${m.name}">${m.name}</option>`
+                    ).join('');
+                    if (llmConfig.model && models.find(m => m.name === llmConfig.model)) {
+                        modelSelect.value = llmConfig.model;
+                    }
+                } else {
+                    modelSelect.innerHTML = '<option value="">No models found</option>';
+                }
+            } else {
+                modelInputGroup.style.display = 'block';
+                modelSelectGroup.style.display = 'none';
+            }
+        }
+
+        providerSelect.addEventListener('change', updateProviderUI);
+
+        llmConfigBtn.onclick = async function() {
             document.getElementById('llmEnabled').checked = llmConfig.enabled;
-            document.getElementById('provider').value = llmConfig.provider || 'openai';
+            providerSelect.value = llmConfig.provider || 'openai';
             document.getElementById('apiEndpoint').value = llmConfig.apiEndpoint;
             document.getElementById('apiKey').value = llmConfig.apiKey;
             document.getElementById('model').value = llmConfig.model;
             document.getElementById('contextLines').value = llmConfig.contextLines;
             document.getElementById('echoInterpretation').checked = llmConfig.echoInterpretation;
 
-            if (llmConfig.provider === 'custom') {
-                customEndpointGroup.style.display = 'block';
-            } else {
-                customEndpointGroup.style.display = 'none';
-            }
+            await updateProviderUI();
 
             modal.style.display = 'block';
         };
@@ -830,7 +948,13 @@ Input='go somewhere unclear' → (empty, don't guess)`;
             llmConfig.provider = document.getElementById('provider').value;
             llmConfig.apiEndpoint = document.getElementById('apiEndpoint').value;
             llmConfig.apiKey = document.getElementById('apiKey').value;
-            llmConfig.model = document.getElementById('model').value;
+
+            if (llmConfig.provider === 'ollama') {
+                llmConfig.model = document.getElementById('modelSelect').value;
+            } else {
+                llmConfig.model = document.getElementById('model').value;
+            }
+
             llmConfig.contextLines = parseInt(document.getElementById('contextLines').value);
             llmConfig.echoInterpretation = document.getElementById('echoInterpretation').checked;
 
@@ -846,6 +970,9 @@ Input='go somewhere unclear' → (empty, don't guess)`;
         window.onclick = function(event) {
             if (event.target == modal) {
                 modal.style.display = 'none';
+            }
+            if (event.target == aboutModal) {
+                aboutModal.style.display = 'none';
             }
         };
 
